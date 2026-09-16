@@ -1,98 +1,101 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+📬 Contact Form Backend — Burner Email Relay
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+A privacy-first contact form backend built with NestJS. Every submission is masked behind a randomly generated "relay" identity before it's forwarded — Craigslist-style — so the recipient never sees the real sender's email address. Every submission is also persisted to disk as proof of delivery.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+✨ Features
+Single REST endpoint — POST /contact/form accepts name, email, and message.
+Burner email relay — the sender's real email is masked behind a random hash (relay-3f9a1c2b8e@burner.local) before the message is forwarded, so it's never exposed to the recipient.
+Server-side validation — required fields, email format, and length limits enforced via class-validator.
+Real email delivery — messages are forwarded via SMTP (Nodemailer), to any provider (Gmail, SendGrid, Mailtrap, Ethereal, etc).
+Durable storage — every submission is appended to a .jsonl file as proof of receipt, independent of email delivery.
+Clear API responses — distinct status codes for validation errors (400), delivery failures (503), and storage failures (500).
+Sample frontend included — a plain HTML/JS form ready to test against, with CORS enabled out of the box.
+🔒 How the privacy relay works
+On every submission, the backend generates a random hash with crypto.randomBytes(10).toString('hex') and builds a relay identity, e.g. relay-3f9a1c2b8e@burner.local.
+The outgoing email's From and Reply-To headers use only that relay identity — never the sender's real address.
+The real email is used only to validate the submission. It is not logged, emailed, or stored — the stored record and the forwarded email both only ever contain the relay identity.
 
-## Description
+Note: this makes the relay one-way by design. Replying to the relay address won't reach the real sender, since nothing listens on burner.local. See Extending to two-way replies if your use case needs that.
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+🧱 Tech stack
+Layer	Choice
+Framework	NestJS
+Validation	class-validator / class-transformer
+Email delivery	Nodemailer over SMTP
+Storage	Append-only .jsonl file (src/data/submissions.jsonl)
+Language	TypeScript
+📁 Project structure
+contact-backend/
+├── src/
+│   ├── contact/
+│   │   ├── contact.controller.ts     # POST /contact/form
+│   │   ├── contact.service.ts        # relay logic + persistence
+│   │   ├── email.service.ts          # SMTP transport (Nodemailer)
+│   │   ├── contact.module.ts
+│   │   └── dto/
+│   │       └── createContactDto.dto.ts
+│   ├── data/
+│   │   └── submissions.jsonl         # append-only submission log
+│   ├── app.module.ts
+│   └── main.ts
+├── sample-form/
+│   └── index.html                    # working test client
+├── .env.example
+└── README.md
+🚀 Getting started
+bash
+# 1. Install dependencies
+npm install
 
-## Project setup
+# 2. Copy the env template and fill in your SMTP credentials
+cp .env.example .env
 
-```bash
-$ npm install
-```
+# 3. Run in watch mode
+npm run start:dev
 
-## Compile and run the project
+Environment variables
+Variable	Description
+PORT	API port (default 3000)
+SMTP_HOST	SMTP server hostname, e.g. smtp.gmail.com
+SMTP_PORT	465 (SSL) or 587 (STARTTLS)
+SMTP_USER	SMTP account username
+SMTP_PASS	SMTP account password / app password
+MAIL_FROM	The verified mailbox the relay sends from — must match SMTP_USER for providers like Gmail
+CONTACT_RECEIVER	The inbox that actually receives contact-form messages (you)
 
-```bash
-# development
-$ npm run start
 
-# watch mode
-$ npm run start:dev
+📡 API reference
+POST /contact/form
 
-# production mode
-$ npm run start:prod
-```
+Request body
 
-## Run tests
+json
+{
+  "name": "Jane Doe",
+  "email": "jane@example.com",
+  "message": "Hi, I'd like to get in touch."
+}
+Field	Rules
+name	required, ≤ 100 characters
+email	required, valid email format
+message	required, 2–5000 characters
 
-```bash
-# unit tests
-$ npm run test
+Success — 201 Created
 
-# e2e tests
-$ npm run test:e2e
+json
+{
+  "success": true,
+  "message": "Submission received, forwarded, and stored successfully.",
+  "submission": {
+    "id": "d290f1ee-6c54-4b01-90e6-d701748f0851",
+    "relayAddress": "relay-3f9a1c2b8e@burner.local",
+    "storedAt": "2026-09-10T12:00:00.000Z"
+  }
+}
 
-# test coverage
-$ npm run test:cov
-```
+Validation failure — 400 Bad Request Missing or invalid name, email, or message.
 
-## Deployment
+Delivery failure — 503 Service Unavailable SMTP server unreachable or misconfigured.
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+Storage failure — 500 Internal Server Error Email was sent, but the submission couldn't be written to disk.
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
-
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
-```
-
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
-
-## Resources
-
-Check out a few resources that may come in handy when working with NestJS:
-
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
